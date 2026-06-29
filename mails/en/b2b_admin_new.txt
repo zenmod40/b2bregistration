@@ -1,0 +1,8 @@
+New professional account request on {shop_name}.
+
+Customer: {firstname} {lastname} ({email})
+Company: {company}
+SIRET: {siret}
+VAT: {vat_number}
+
+Review: {bo_link}

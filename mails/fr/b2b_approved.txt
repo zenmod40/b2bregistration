@@ -1,0 +1,4 @@
+Bonjour {firstname} {lastname},
+
+Votre compte professionnel sur {shop_name} est desormais actif.
+Vous beneficiez des conditions reservees aux professionnels. Connectez-vous pour en profiter.

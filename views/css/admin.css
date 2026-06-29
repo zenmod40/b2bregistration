@@ -1,0 +1,35 @@
+/**
+ * Inscription B2B - styles back-office (configuration).
+ * @license GPL-3.0-or-later
+ */
+.b2r-group-select { min-width: 260px; }
+
+/* Guide dépliable (clé API INSEE) */
+.b2r-guide {
+    margin: 4px 0 0;
+    border: 1px solid #e3e5e7;
+    border-radius: 6px;
+    background: #fbfcfd;
+}
+.b2r-guide > summary {
+    cursor: pointer;
+    padding: 10px 14px;
+    font-weight: 600;
+    color: #2563EB;
+    list-style: none;
+}
+.b2r-guide > summary::-webkit-details-marker { display: none; }
+.b2r-guide > summary::before { content: "\25B8  "; }
+.b2r-guide[open] > summary::before { content: "\25BE  "; }
+.b2r-guide-body { padding: 0 14px 12px; color: #4a4f56; font-size: 13px; }
+.b2r-guide-body a { font-weight: 600; }
+
+/* Titres de section au sein du HelperForm (champs de type html). */
+#module_form h3,
+.module_confirmation + form h3 {
+    margin: 18px 0 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e3e5e7;
+    font-size: 15px;
+    color: #363a41;
+}

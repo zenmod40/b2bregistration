@@ -1,0 +1,6 @@
+Bonjour {firstname} {lastname},
+
+Apres examen, nous ne sommes pas en mesure de valider votre demande de compte professionnel sur {shop_name}.
+{reason}
+
+Pour toute question, n'hesitez pas a nous contacter.

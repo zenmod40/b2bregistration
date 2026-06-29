@@ -1,0 +1,6 @@
+Bonjour {firstname} {lastname},
+
+Nous avons bien recu votre demande de creation de compte professionnel sur {shop_name}.
+Votre demande est en cours d'examen. Vous recevrez un e-mail des qu'elle aura ete validee.
+
+Merci de votre confiance.

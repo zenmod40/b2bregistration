@@ -1,0 +1,4 @@
+Hello {firstname} {lastname},
+
+Your professional account on {shop_name} is now active.
+You now benefit from professional conditions. Log in to enjoy them.

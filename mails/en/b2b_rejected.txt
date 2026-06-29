@@ -1,0 +1,6 @@
+Hello {firstname} {lastname},
+
+After review, we are unable to approve your professional account request on {shop_name}.
+{reason}
+
+If you have any questions, please contact us.

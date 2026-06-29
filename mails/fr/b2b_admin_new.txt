@@ -1,0 +1,8 @@
+Nouvelle demande de compte professionnel sur {shop_name}.
+
+Client : {firstname} {lastname} ({email})
+Societe : {company}
+SIRET : {siret}
+N TVA : {vat_number}
+
+Examiner : {bo_link}

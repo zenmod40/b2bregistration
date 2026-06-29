@@ -1,0 +1,4 @@
+Hello {firstname} {lastname},
+
+We have received your request to create a professional account on {shop_name}.
+Your request is being reviewed. You will receive an email as soon as it is approved.
