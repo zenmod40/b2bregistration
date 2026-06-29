@@ -44,7 +44,6 @@
     <div class="tab-content" style="padding-top:15px;">
         <div class="tab-pane active" id="b2r-tab-config">
             {$b2r_form nofilter}
-            {include file="./_partials/zm40_panel.tpl"}
         </div>
         <div class="tab-pane" id="b2r-tab-modules">
             {include file="./_partials/zm40_modules.tpl"}
@@ -52,7 +51,9 @@
     </div>
 {else}
     {$b2r_form nofilter}
-    {include file="./_partials/zm40_panel.tpl"}
 {/if}
+
+{* Panel « libre & open source » + prestations — toujours en bas, visible quel que soit l'onglet actif *}
+{include file="./_partials/zm40_panel.tpl"}
 
 {include file="./_partials/zm40_footer.tpl"}
