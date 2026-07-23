@@ -1,5 +1,7 @@
 # Inscription B2B
 
+[![Téléchargements](https://img.shields.io/github/downloads/zenmod40/b2bregistration/total.svg)](https://github.com/zenmod40/b2bregistration/releases) [![Version](https://img.shields.io/github/v/release/zenmod40/b2bregistration)](https://github.com/zenmod40/b2bregistration/releases/latest)
+
 Module PrestaShop d'inscription professionnelle (B2B) : champs dédiés, vérification du SIRET et du numéro de TVA intracommunautaire, pré-remplissage automatique, affectation de groupe par pays et workflow de modération.
 
 Compatible PrestaShop 1.7, 8 et 9. Module libre et open source sous licence GPL v3, par ZM40.
