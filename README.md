@@ -2,6 +2,8 @@
 
 [![Téléchargements](https://img.shields.io/github/downloads/zenmod40/b2bregistration/total.svg)](https://github.com/zenmod40/b2bregistration/releases) [![Version](https://img.shields.io/github/v/release/zenmod40/b2bregistration)](https://github.com/zenmod40/b2bregistration/releases/latest)
 
+> 📦 **[Page du module sur zm40.com](https://zm40.com/b2bregistration)** · [Documentation](https://zm40.com/b2bregistration/documentation) · [Changelog](https://zm40.com/b2bregistration/changelog)
+
 Module PrestaShop d'inscription professionnelle (B2B) : champs dédiés, vérification du SIRET et du numéro de TVA intracommunautaire, pré-remplissage automatique, affectation de groupe par pays et workflow de modération.
 
 Compatible PrestaShop 1.7, 8 et 9. Module libre et open source sous licence GPL v3, par ZM40.
@@ -50,7 +52,7 @@ La modération des demandes se fait dans Clients > Demandes B2B.
 
 ## Support et services
 
-Le code est offert. Le support gratuit se limite aux bugs reproductibles (issues GitHub). L'installation, la configuration, l'adaptation à votre thème, le débogage spécifique et les développements sur-mesure sont des prestations : zm40.com.
+Le code est offert. Le support gratuit se limite aux bugs reproductibles (issues GitHub). L'installation, la configuration, l'adaptation à votre thème, le débogage spécifique et les développements sur-mesure sont des prestations : [zm40.com](https://zm40.com).
 
 Une version compatible ThirtyBees / PrestaShop 1.6 peut être étudiée sur demande.
 
