@@ -1,6 +1,6 @@
 {*
  * Inscription B2B - Détail d'une demande (back-office)
- * @license GPL-3.0-or-later
+ * @license https://opensource.org/licenses/OSL-3.0 Open Software License version 3.0
  *}
 <div class="panel">
     <div class="panel-heading"><i class="icon-building"></i> {l s='Demande B2B' mod='b2bregistration'} #{$b2r->id|intval}</div>

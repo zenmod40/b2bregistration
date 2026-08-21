@@ -3,7 +3,7 @@
  * pré-remplissage NON destructif (ne remplit que les champs vides, jamais de
  * readonly — le client peut toujours corriger une adresse obsolète).
  *
- * @license GPL-3.0-or-later
+ * @license https://opensource.org/licenses/OSL-3.0 Open Software License version 3.0
  */
 (function () {
     'use strict';

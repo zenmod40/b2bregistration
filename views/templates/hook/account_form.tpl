@@ -6,7 +6,7 @@
  *   - Bloc intro CMS optionnel
  *   - Champ upload Kbis optionnel (révélé en mode pro)
  *
- * @license GPL-3.0-or-later
+ * @license https://opensource.org/licenses/OSL-3.0 Open Software License version 3.0
  *}
 {* Tout le bloc est wrappé dans .b2r-form-prepend → déplacé en TÊTE du <form>
    au chargement par le JS (hookDisplayCustomerAccountForm rend en bas dans

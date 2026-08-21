@@ -2,7 +2,7 @@
  * Inscription B2B - Lien "Inscription Pro" dans la nav top.
  * Activé via B2R_HEADER_LINK + B2R_HEADER_HOOK (nav1 / nav2).
  * CSS inline (style global, mais minuscule + scopé .b2r-header-link).
- * @license GPL-3.0-or-later
+ * @license https://opensource.org/licenses/OSL-3.0 Open Software License version 3.0
  *}
 <style>
 .b2r-header-link {

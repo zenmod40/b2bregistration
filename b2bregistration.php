@@ -4,20 +4,12 @@
  *
  * @author    ZM40 — Nicolas Michaud (Magic Garden)
  * @copyright 2026 Nicolas Michaud — ZM40 / Magic Garden
- * @license   GPL-3.0-or-later
+ * @license   https://opensource.org/licenses/OSL-3.0 Open Software License version 3.0
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This source file is subject to the Open Software License (OSL 3.0)
+ * that is bundled with this package in the file LICENSE.
+ * It is also available through the world-wide-web at this URL:
+ * https://opensource.org/licenses/OSL-3.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -45,7 +37,7 @@ class B2bRegistration extends Module
     {
         $this->name = 'b2bregistration';
         $this->tab = 'front_office_features';
-        $this->version = '1.0.2';
+        $this->version = '1.0.3';
         $this->author = 'ZM40';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -953,7 +945,7 @@ class B2bRegistration extends Module
             'zm40_update'        => Zm40CommonB2b::checkUpdate($this->name, $this->version),
             'zm40_modules'       => Zm40CommonB2b::modulesFeed($this->name),
             'zm40_about_name'    => $this->displayName,
-            'zm40_about_license' => 'GPL v3',
+            'zm40_about_license' => 'OSL 3.0',
             'zm40_about_github'  => Zm40CommonB2b::githubUrl($this->name),
             'zm40_about_site'    => Zm40CommonB2b::siteUrl($this->name, 'panel', '/contact'),
             'zm40_about_modules' => Zm40CommonB2b::siteUrl($this->name, 'panel', '/'),
