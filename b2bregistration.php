@@ -37,7 +37,7 @@ class B2bRegistration extends Module
     {
         $this->name = 'b2bregistration';
         $this->tab = 'front_office_features';
-        $this->version = '1.0.3';
+        $this->version = '1.0.4';
         $this->author = 'ZM40';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -59,6 +59,7 @@ class B2bRegistration extends Module
         if (!parent::install()
             || !$this->registerHook('additionalCustomerFormFields')
             || !$this->registerHook('actionCustomerAccountAdd')
+            || !$this->registerHook('actionCustomerAccountUpdate')
             || !$this->registerHook('displayCustomerAccountForm')
             || !$this->registerHook('displayHeader')
             || !$this->registerHook('actionObjectCustomerDeleteAfter')
@@ -276,6 +277,10 @@ class B2bRegistration extends Module
                 'enableVies'   => (int) Configuration::get('B2R_ENABLE_VIES'),
                 'requireSiret' => (int) Configuration::get('B2R_REQUIRE_SIRET'),
                 'onlyPro'      => (int) Configuration::get('B2R_ONLY_PRO'),
+                // Sur « Mes informations », les champs portent déjà les valeurs
+                // du client : pas de reveal progressif (il masquerait tout tant
+                // que le SIRET n'est pas resaisi).
+                'isIdentity'   => (int) ($this->context->controller->php_self === 'identity'),
                 // IDs des pays INSEE (FR + MC + DROM-COM) à exclure du dropdown
                 // pays quand le client clique "Pas de SIRET — entreprise hors France".
                 'inseeIdCountries' => B2bCompat::inseeIdCountries(),
@@ -388,7 +393,51 @@ class B2bRegistration extends Module
         $country->setValue((int) Configuration::get('PS_COUNTRY_DEFAULT'));
         $fields[] = $country;
 
+        $this->fillFieldsFromRequest($fields);
+
         return $fields;
+    }
+
+    /**
+     * Repeuple les champs pro depuis la demande B2B du client connecté.
+     *
+     * PrestaShop ne remplit le formulaire client qu'avec les propriétés de
+     * l'objet Customer (CustomerForm::fillFromCustomer) : nos champs b2r_*
+     * n'en font pas partie et arrivaient donc vides sur « Mes informations ».
+     * En POST, PrestaShop écrase ensuite ces valeurs par celles soumises.
+     *
+     * @param FormField[] $fields
+     */
+    private function fillFieldsFromRequest(array $fields)
+    {
+        $customer = isset($this->context->customer) ? $this->context->customer : null;
+        if (!$customer || !$customer->id || !$customer->isLogged()) {
+            return; // inscription : rien à pré-remplir
+        }
+
+        $request = B2bRequest::getByCustomer((int) $customer->id);
+        if (!Validate::isLoadedObject($request)) {
+            return; // client B2C
+        }
+
+        // array_filter : on ne remplace jamais une valeur par du vide (le pays
+        // conserve ainsi le défaut boutique si la demande n'en portait pas).
+        $values = array_filter(array(
+            'b2r_siret'   => (string) $request->siret,
+            'b2r_company' => (string) $request->company,
+            'b2r_ape'     => (string) $request->ape,
+            'b2r_vat'     => (string) $request->vat_number,
+            'b2r_website' => (string) $request->website,
+            'b2r_phone'   => (string) $request->pro_phone,
+            'b2r_country' => (int) $request->id_country,
+        ));
+
+        foreach ($fields as $field) {
+            $name = $field->getName();
+            if (isset($values[$name])) {
+                $field->setValue($values[$name]);
+            }
+        }
     }
 
     /**
@@ -463,6 +512,83 @@ class B2bRegistration extends Module
         }
 
         $this->processProRegistration($customer);
+    }
+
+    /**
+     * Mise à jour des champs pro depuis « Mes informations » (page identity).
+     * Sans ça, les valeurs affichées seraient réaffichées telles quelles au
+     * rechargement et toute correction du client serait perdue.
+     */
+    public function hookActionCustomerAccountUpdate($params)
+    {
+        if (empty($params['customer']) || !($params['customer'] instanceof Customer)) {
+            return;
+        }
+        $customer = $params['customer'];
+
+        // Le formulaire client sert aussi ailleurs (tunnel, autres modules) :
+        // si aucun champ pro n'a été soumis, on ne touche à rien.
+        if (!Tools::getIsset('b2r_siret') && !Tools::getIsset('b2r_company')) {
+            return;
+        }
+
+        $request = B2bRequest::getByCustomer((int) $customer->id);
+        if (!Validate::isLoadedObject($request)) {
+            return; // client B2C : aucune demande à mettre à jour
+        }
+
+        if (Tools::getIsset('b2r_siret')) {
+            $siret = B2bValidator::normalizeSiret(Tools::getValue('b2r_siret'));
+            if ($siret !== (string) $request->siret) {
+                $request->siret = $siret;
+                // Identifiant modifié après coup : la vérification d'origine ne
+                // vaut plus. On repasse en « non vérifié » pour que le back-office
+                // ne présente pas un SIRET validé qui ne l'est plus.
+                $request->siret_valid = B2bRequest::CHECK_UNKNOWN;
+                $request->siret_detail = json_encode(array('reason' => 'customer_edit'));
+            }
+        }
+        if (Tools::getIsset('b2r_vat')) {
+            $vat = B2bValidator::normalizeVat(Tools::getValue('b2r_vat'));
+            if ($vat !== (string) $request->vat_number) {
+                $request->vat_number = $vat;
+                $request->vat_valid = B2bRequest::CHECK_UNKNOWN;
+                $request->vat_detail = json_encode(array('reason' => 'customer_edit'));
+            }
+        }
+        $simple = array(
+            'b2r_company' => 'company',
+            'b2r_ape'     => 'ape',
+            'b2r_website' => 'website',
+            'b2r_phone'   => 'pro_phone',
+        );
+        foreach ($simple as $input => $property) {
+            if (Tools::getIsset($input)) {
+                $request->$property = trim((string) Tools::getValue($input));
+            }
+        }
+        $idCountry = (int) Tools::getValue('b2r_country');
+        if ($idCountry && $idCountry !== (int) $request->id_country) {
+            $request->id_country = $idCountry;
+            $request->country_iso = strtoupper((string) Country::getIsoById($idCountry));
+            // Le scope est recalculé pour le back-office, mais les groupes déjà
+            // affectés ne bougent pas : un changement de pays reste une décision admin.
+            $request->country_scope = B2bCompat::countryScope($idCountry);
+        }
+
+        try {
+            $request->update();
+        } catch (Exception $e) {
+            return;
+        }
+
+        B2bCompat::writeNativeCustomerFields($customer, array(
+            'company' => $request->company,
+            'siret'   => $request->siret,
+            'website' => $request->website,
+            'ape'     => $request->ape,
+        ));
+        B2bCompat::writeNativeAddressVat((int) $customer->id, $request->vat_number, $request->company);
     }
 
     /**

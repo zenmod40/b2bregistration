@@ -30,7 +30,8 @@
     var siretState = 'idle';
     // Mode "reveal progressif" : on n'affiche que le champ SIRET tant qu'il n'est pas validé.
     // Activé seulement si la vérif INSEE est disponible (sinon on ne peut pas gate).
-    var progressiveReveal = !!(b2rConfig.enableSiret && b2rConfig.enableInsee);
+    // Jamais de gating sur « Mes informations » : les champs y sont déjà remplis.
+    var progressiveReveal = !!(b2rConfig.enableSiret && b2rConfig.enableInsee && !b2rConfig.isIdentity);
 
     function getProBlockNodes() {
         var nodes = [];

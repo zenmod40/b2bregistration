@@ -4,6 +4,14 @@ Toutes les modifications notables de ce module sont documentées ici.
 
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et le module suit le [Versionnement sémantique](https://semver.org/lang/fr/).
 
+## [1.0.4] - 2026-08-24
+
+### Corrigé
+
+- **Les champs professionnels apparaissaient vides sur la page « Mes informations ».** PrestaShop ne remplit le formulaire client qu'avec les propriétés de l'objet Customer ; les champs ajoutés par un module (SIRET, raison sociale, code APE, n° de TVA, site web, téléphone, pays) n'en font pas partie et étaient donc systématiquement rendus vides, alors que les informations étaient bien enregistrées côté demande B2B. Ils sont désormais pré-remplis depuis la demande du client.
+- **Les modifications de ces champs sur « Mes informations » n'étaient pas enregistrées.** Le module ne traitait que la création de compte. Les corrections apportées par le client (raison sociale, coordonnées, identifiants) sont maintenant reportées sur sa demande B2B, ainsi que sur les champs natifs du client et de ses adresses. Si le SIRET ou le n° de TVA est modifié après coup, il repasse en « non vérifié » en back-office : la vérification d'origine ne porte plus sur la valeur saisie.
+- Le dévoilement progressif des champs (qui n'affiche la suite du formulaire qu'une fois le SIRET validé) ne s'applique plus sur « Mes informations », où il masquait des champs déjà renseignés.
+
 ## [1.0.3] - 2026-08-21
 
 ### Modifié
