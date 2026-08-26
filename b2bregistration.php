@@ -36,7 +36,7 @@ class B2bRegistration extends Module
     public function __construct()
     {
         $this->name = 'b2bregistration';
-        $this->tab = 'front_office_features';
+        $this->tab = 'administration';
         $this->version = '1.0.4';
         $this->author = 'ZM40';
         $this->need_instance = 0;
