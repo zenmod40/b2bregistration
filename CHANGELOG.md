@@ -4,6 +4,15 @@ Toutes les modifications notables de ce module sont documentées ici.
 
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et le module suit le [Versionnement sémantique](https://semver.org/lang/fr/).
 
+## [1.0.5] - 2026-08-29
+
+### Ajouté
+
+- **Mentions de TVA sur la facture, selon le régime réellement appliqué à la commande.** Une vente facturée sans TVA doit indiquer le fondement de l'exonération, et ce fondement diffère selon les cas : livraison intracommunautaire de biens, prestation de services intracommunautaire, exportation hors Union européenne, territoire hors champ d'application de la TVA. PrestaShop ne propose qu'un texte libre unique, identique pour toutes les factures, ce qui obligeait à traiter ces cas à la main. Un onglet « Mentions sur facture » permet désormais de saisir un texte par cas, dans chaque langue de la boutique ; le module ajoute celui qui correspond, et seulement si la facture ne porte aucune TVA.
+- Le cas est déduit de la commande — pays de taxation et TVA appliquée — et non de la fiche client au moment où la facture est rééditée : modifier ou invalider un numéro de TVA ne réécrit pas une facture déjà émise.
+- Les champs sont vides par défaut et le restent tant que le marchand ne les remplit pas. La formulation usuelle de chaque cas est proposée en aide de saisie, mais n'est jamais écrite automatiquement : ces textes engagent le marchand et supposent une boutique française.
+- Le texte libre de facture configuré dans PrestaShop reste utilisé ; la mention s'y ajoute au lieu de le remplacer. Il reste l'endroit approprié pour ce qui ne dépend pas du client, comme la franchise en base ou l'autoliquidation en sous-traitance.
+
 ## [1.0.4] - 2026-08-24
 
 ### Corrigé

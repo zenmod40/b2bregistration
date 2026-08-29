@@ -21,6 +21,7 @@ require_once dirname(__FILE__) . '/classes/B2bGroupRule.php';
 require_once dirname(__FILE__) . '/classes/B2bValidator.php';
 require_once dirname(__FILE__) . '/classes/B2bCompat.php';
 require_once dirname(__FILE__) . '/classes/B2bMailer.php';
+require_once dirname(__FILE__) . '/classes/B2bInvoiceMentions.php';
 
 class B2bRegistration extends Module
 {
@@ -37,7 +38,7 @@ class B2bRegistration extends Module
     {
         $this->name = 'b2bregistration';
         $this->tab = 'administration';
-        $this->version = '1.0.4';
+        $this->version = '1.0.5';
         $this->author = 'ZM40';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -66,6 +67,7 @@ class B2bRegistration extends Module
             || !$this->registerHook('actionEmailSendBefore')
             || !$this->registerHook('displayNav1')
             || !$this->registerHook('displayNav2')
+            || !$this->registerHook('displayInvoiceLegalFreeText')
         ) {
             return false;
         }
@@ -178,7 +180,7 @@ class B2bRegistration extends Module
      */
     private function configKeys()
     {
-        return array(
+        return array_merge(array(
             'B2R_ONLY_PRO', 'B2R_INTRO_CMS', 'B2R_TERMS_CMS',
             'B2R_FIELD_APE', 'B2R_FIELD_WEBSITE', 'B2R_FIELD_PHONE', 'B2R_ALLOW_UPLOAD',
             'B2R_REQUIRE_SIRET', 'B2R_REQUIRE_VAT',
@@ -188,7 +190,7 @@ class B2bRegistration extends Module
             'B2R_ASSIGN_DOMESTIC', 'B2R_ASSIGN_EU', 'B2R_ASSIGN_WORLD',
             'B2R_USE_NATIVE_B2B', 'B2R_DEFAULT_GROUP',
             'B2R_HEADER_LINK', 'B2R_HEADER_LABEL', 'B2R_HEADER_HOOK', 'B2R_CMS_TERMS',
-        );
+        ), B2bInvoiceMentions::keys());
     }
 
     private function setDefaults()
@@ -605,6 +607,36 @@ class B2bRegistration extends Module
     public function hookDisplayNav2($params)
     {
         return $this->renderHeaderLink('nav2');
+    }
+
+    /**
+     * Mention de TVA sur la facture PDF.
+     *
+     * Attention : le noyau ne lit `PS_INVOICE_LEGAL_FREE_TEXT` que si ce hook
+     * ne renvoie rien. Dès qu'on répond quelque chose, on remplace le texte
+     * libre de la boutique — il faut donc le reprendre nous-mêmes.
+     */
+    public function hookDisplayInvoiceLegalFreeText($params)
+    {
+        $order = isset($params['order']) ? $params['order'] : null;
+        if (!Validate::isLoadedObject($order)) {
+            return '';
+        }
+
+        $mention = B2bInvoiceMentions::forOrder($order);
+        if ($mention === '') {
+            // Rien à ajouter : le noyau reprend le texte libre de la boutique.
+            return '';
+        }
+
+        $shopText = trim((string) Configuration::get(
+            'PS_INVOICE_LEGAL_FREE_TEXT',
+            (int) $order->id_lang,
+            null,
+            (int) $order->id_shop
+        ));
+
+        return $shopText === '' ? $mention : $shopText . "\n" . $mention;
     }
 
     private function renderHeaderLink($hookId)
@@ -1104,6 +1136,17 @@ class B2bRegistration extends Module
             B2bGroupRule::replaceScope($scope, array_map('intval', $sel));
         }
 
+        // Mentions de facture : un champ par langue, HTML interdit (le PDF
+        // échappe le texte, une balise s'y afficherait telle quelle).
+        foreach (B2bInvoiceMentions::keys() as $key) {
+            $perLang = array();
+            foreach ($this->context->controller->getLanguages() as $lang) {
+                $idLang = (int) $lang['id_lang'];
+                $perLang[$idLang] = strip_tags(trim((string) Tools::getValue($key . '_' . $idLang)));
+            }
+            Configuration::updateValue($key, $perLang);
+        }
+
         // Mode B2B natif PrestaShop (optionnel).
         Configuration::updateValue('PS_B2B_ENABLE', (int) Tools::getValue('B2R_USE_NATIVE_B2B'));
 
@@ -1128,6 +1171,15 @@ class B2bRegistration extends Module
                     array('id' => $name . '_on', 'value' => 1, 'label' => $this->l('Oui')),
                     array('id' => $name . '_off', 'value' => 0, 'label' => $this->l('Non')),
                 ),
+            );
+        };
+
+        $suggestions = B2bInvoiceMentions::suggestions();
+        $mention = function ($name, $label, $desc) use ($suggestions) {
+            return array(
+                'type' => 'textarea', 'label' => $label, 'name' => $name,
+                'tab' => 't_invoice', 'lang' => true, 'rows' => 2, 'cols' => 60,
+                'desc' => $desc . ' ' . sprintf($this->l('Formulation usuelle : « %s »'), $suggestions[$name]),
             );
         };
 
@@ -1212,6 +1264,24 @@ class B2bRegistration extends Module
                 . '</div>',
             ),
             $onOff('B2R_USE_NATIVE_B2B', $this->l('Activer le mode B2B natif PrestaShop'), 't_flow', $this->l('Modifie le comportement global de la boutique (voir ci-dessus). Laissez désactivé si vous n\'avez pas spécifiquement besoin de l\'interface B2B native.')),
+
+            // Onglet « Mentions sur facture »
+            array('type' => 'html', 'tab' => 't_invoice', 'name' => 'b2r_invoice_info', 'html_content' =>
+                '<div class="alert alert-info">'
+                . '<p>' . $this->l('Une commande facturée sans TVA doit indiquer le fondement de l\'exonération. PrestaShop ne propose qu\'un texte libre unique : ces champs ajoutent la mention correspondant au régime réellement appliqué à chaque commande.') . '</p>'
+                . '<p>' . $this->l('La mention n\'est ajoutée que si la facture ne porte aucune TVA. Le cas est déduit de la commande — pays de taxation et TVA appliquée — et non de la fiche client actuelle : modifier un numéro de TVA ne réécrit pas une facture déjà émise.') . '</p>'
+                . '<p style="margin-bottom:0"><strong>' . $this->l('Champs vides : rien n\'est ajouté.') . '</strong> ' . $this->l('Les formulations proposées sous chaque champ supposent une boutique française et doivent être validées par votre comptable avant usage.') . '</p>'
+                . '</div>'
+                . '<p class="help-block">' . $this->l('Le texte libre de facture de PrestaShop (Commandes → Factures) reste utilisé, la mention s\'y ajoute. Utilisez-le pour ce qui ne dépend pas du client : franchise en base, autoliquidation en sous-traitance.') . '</p>',
+            ),
+            $mention(B2bInvoiceMentions::KEY_EU_GOODS, $this->l('Livraison intracommunautaire de biens'),
+                $this->l('Client dans un autre pays de l\'Union européenne.')),
+            $mention(B2bInvoiceMentions::KEY_EU_SERVICE, $this->l('Prestation de services intracommunautaire'),
+                $this->l('Utilisé à la place du précédent quand la commande ne contient que des produits dématérialisés.')),
+            $mention(B2bInvoiceMentions::KEY_EXPORT, $this->l('Exportation hors Union européenne'),
+                $this->l('Client hors UE.')),
+            $mention(B2bInvoiceMentions::KEY_OUTSIDE_VAT, $this->l('Territoire hors champ de la TVA'),
+                $this->l('Guyane et Mayotte.')),
         );
 
         $fields_form = array(
@@ -1222,6 +1292,7 @@ class B2bRegistration extends Module
                     't_valid'  => $this->l('Vérification SIRET / TVA'),
                     't_flow'   => $this->l('Workflow'),
                     't_group'  => $this->l('Affectation de groupe'),
+                    't_invoice' => $this->l('Mentions sur facture'),
                 ),
                 'input' => $inputs,
                 'submit' => array('title' => $this->l('Enregistrer')),
@@ -1234,7 +1305,10 @@ class B2bRegistration extends Module
         $helper->token = Tools::getAdminTokenLite('AdminModules');
         $helper->currentIndex = AdminController::$currentIndex . '&configure=' . $this->name;
         $helper->submit_action = 'submitB2rConfig';
+        // Requis par les champs multilingues de l'onglet « Mentions sur facture ».
+        $helper->languages = $this->context->controller->getLanguages();
         $helper->default_form_language = (int) $this->context->language->id;
+        $helper->allow_employee_form_lang = (int) Configuration::get('PS_BO_ALLOW_EMPLOYEE_FORM_LANG');
         $helper->fields_value = $this->getConfigFieldsValues();
 
         return $helper->generateForm(array($fields_form));
@@ -1253,6 +1327,14 @@ class B2bRegistration extends Module
         $values = array();
         foreach ($keys as $k) {
             $values[$k] = Configuration::get($k);
+        }
+
+        // Mentions de facture : une valeur par langue.
+        foreach ($this->context->controller->getLanguages() as $lang) {
+            $idLang = (int) $lang['id_lang'];
+            foreach (B2bInvoiceMentions::keys() as $k) {
+                $values[$k][$idLang] = Configuration::get($k, $idLang);
+            }
         }
 
         return $values;
