@@ -51,15 +51,21 @@ class B2bGroupRule extends ObjectModel
     /**
      * IDs de groupes actifs pour un scope donné.
      *
+     * La jointure sur `group` écarte les règles pointant vers un groupe
+     * supprimé depuis : sans elle la liste n'est pas vide, le repli sur
+     * B2R_DEFAULT_GROUP ne joue pas, et le client validé atterrit dans un
+     * groupe fantôme — donc sans prix pro et sans erreur visible.
+     *
      * @param string $scope
      * @return int[]
      */
     public static function getGroupIdsForScope($scope)
     {
         $rows = Db::getInstance()->executeS(
-            'SELECT id_group FROM `' . _DB_PREFIX_ . 'b2r_group_rule`
-             WHERE active = 1 AND scope = "' . pSQL($scope) . '"
-             ORDER BY position ASC'
+            'SELECT r.id_group FROM `' . _DB_PREFIX_ . 'b2r_group_rule` r
+             INNER JOIN `' . _DB_PREFIX_ . 'group` g ON g.id_group = r.id_group
+             WHERE r.active = 1 AND r.scope = "' . pSQL($scope) . '"
+             ORDER BY r.position ASC'
         );
 
         $ids = array();
@@ -86,8 +92,9 @@ class B2bGroupRule extends ObjectModel
         );
 
         $rows = Db::getInstance()->executeS(
-            'SELECT scope, id_group FROM `' . _DB_PREFIX_ . 'b2r_group_rule`
-             WHERE active = 1 ORDER BY position ASC'
+            'SELECT r.scope, r.id_group FROM `' . _DB_PREFIX_ . 'b2r_group_rule` r
+             INNER JOIN `' . _DB_PREFIX_ . 'group` g ON g.id_group = r.id_group
+             WHERE r.active = 1 ORDER BY r.position ASC'
         );
         if (is_array($rows)) {
             foreach ($rows as $r) {

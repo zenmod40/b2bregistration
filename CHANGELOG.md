@@ -4,7 +4,11 @@ Toutes les modifications notables de ce module sont documentées ici.
 
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et le module suit le [Versionnement sémantique](https://semver.org/lang/fr/).
 
-## [1.0.5] - 2026-08-29
+## [1.0.5] - 2026-09-04
+
+### Corrigé
+
+- **Une règle d'affectation pointant vers un groupe supprimé envoyait le client validé dans le vide.** Les règles conservent l'identifiant du groupe choisi ; si ce groupe est supprimé ensuite, la règle subsiste et reste comptée comme valide. Le repli sur le groupe par défaut ne se déclenchant qu'en l'absence totale de règle, il ne jouait pas : le client sortait de la validation affecté à un groupe inexistant, donc sans tarifs professionnels, et rien ne le signalait. Les règles dont le groupe n'existe plus sont désormais ignorées, ce qui rend au groupe par défaut son rôle de filet. La sélection affichée en configuration est filtrée de la même façon.
 
 ### Ajouté
 
