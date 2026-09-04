@@ -38,7 +38,7 @@ class B2bRegistration extends Module
     {
         $this->name = 'b2bregistration';
         $this->tab = 'administration';
-        $this->version = '1.0.5';
+        $this->version = '1.0.6';
         $this->author = 'ZM40';
         $this->need_instance = 0;
         $this->bootstrap = true;
