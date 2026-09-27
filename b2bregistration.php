@@ -29,11 +29,12 @@ class B2bRegistration extends Module
     const ADMIN_CONTROLLER = 'AdminB2bRequests';
 
     /**
-     * ID du customer dont on doit SUPPRIMER le mail de bienvenue natif PrestaShop.
-     * Rempli par processProRegistration() en cas de refus auto. Consommé par
-     * hookActionEmailSendBefore() qui annule l'envoi.
+     * Vérifications de l'inscription pro en cours, calculées une seule fois
+     * par requête : le filtre du mail de bienvenue (appelé AVANT le hook
+     * d'inscription) et l'enregistrement de la demande lisent le même verdict,
+     * sans interroger deux fois INSEE et VIES.
      */
-    private static $suppressAccountCreationFor = 0;
+    private static $proChecks = null;
 
     public function __construct()
     {
@@ -721,61 +722,62 @@ class B2bRegistration extends Module
     }
 
     /**
-     * Suppression du mail "Bienvenue / compte créé" natif PrestaShop lorsque
-     * la demande B2B associée a été refusée auto (processProRegistration a
-     * mis l'id client dans self::$suppressAccountCreationFor). Sinon le client
-     * recevrait à la fois un mail "compte créé" et un mail "demande refusée".
+     * Suppression du mail « Bienvenue » natif lorsque l'inscription pro en
+     * cours va être refusée automatiquement : sinon le client recevrait à la
+     * fois « compte créé » et « demande refusée », pour un compte supprimé.
+     *
+     * Le cœur envoie ce mail AVANT d'appeler actionCustomerAccountAdd : le
+     * verdict doit donc être calculé ici, depuis le formulaire soumis.
      *
      * Retourne false pour annuler l'envoi.
      */
     public function hookActionEmailSendBefore($params)
     {
-        if (!self::$suppressAccountCreationFor) {
-            return true;
-        }
         $template = isset($params['template']) ? (string) $params['template'] : '';
         // Le template natif PS pour la création de compte client est "account".
-        if ($template !== 'account') {
+        if ($template !== 'account' || !Tools::getIsset('b2r_siret')) {
             return true;
         }
-        $to = isset($params['to']) ? $params['to'] : array();
-        if (!is_array($to)) {
+        $isPro = (int) Configuration::get('B2R_ONLY_PRO') || (bool) Tools::getValue('b2r_is_pro');
+        if (!$isPro || !$this->proSubmissionChecks()['blocked']) {
             return true;
         }
-        // Si le destinataire correspond au customer qu'on vient de refuser
-        // → on annule l'envoi (autres mails de la même session ignorés).
-        $customer = new Customer((int) self::$suppressAccountCreationFor);
-        if (!Validate::isLoadedObject($customer)) {
-            // Customer déjà supprimé → on bloque par sécurité.
-            return false;
-        }
+
+        // Seul le mail adressé au client qui s'inscrit est concerné.
+        $email = trim((string) Tools::getValue('email'));
+        $to = isset($params['to']) ? (array) $params['to'] : array();
         foreach ($to as $addr) {
-            if (is_string($addr) && strcasecmp(trim($addr), trim((string) $customer->email)) === 0) {
+            if (is_string($addr) && strcasecmp(trim($addr), $email) === 0) {
                 return false;
             }
         }
+
         return true;
     }
 
     /**
-     * Cœur du workflow : collecte, validation, stockage, affectation, e-mails.
+     * Vérifie le SIRET et la TVA saisis à l'inscription pro, et dit si la
+     * configuration impose un refus automatique. Mémorisé pour la requête.
+     *
+     * @return array iso, company, siret, vat, ape, siret_valid, vat_valid,
+     *               siret_detail, vat_detail, blocked
      */
-    private function processProRegistration(Customer $customer)
+    private function proSubmissionChecks()
     {
-        $idLang = (int) $this->context->language->id;
+        if (self::$proChecks !== null) {
+            return self::$proChecks;
+        }
+
         $idCountry = (int) Tools::getValue('b2r_country');
         if (!$idCountry) {
             $idCountry = (int) Configuration::get('PS_COUNTRY_DEFAULT');
         }
         $iso = strtoupper((string) Country::getIsoById($idCountry));
-        $scope = B2bCompat::countryScope($idCountry);
 
         $company = trim((string) Tools::getValue('b2r_company'));
         $siret = B2bValidator::normalizeSiret(Tools::getValue('b2r_siret'));
         $vat = B2bValidator::normalizeVat(Tools::getValue('b2r_vat'));
         $ape = trim((string) Tools::getValue('b2r_ape'));
-        $website = trim((string) Tools::getValue('b2r_website'));
-        $phone = trim((string) Tools::getValue('b2r_phone'));
 
         // --- Validation (fail-soft) ---
         $siretValid = B2bRequest::CHECK_UNKNOWN;
@@ -823,6 +825,45 @@ class B2bRegistration extends Module
                 $blocked = true;
             }
         }
+
+        return self::$proChecks = array(
+            'iso' => $iso,
+            'company' => $company,
+            'siret' => $siret,
+            'vat' => $vat,
+            'ape' => $ape,
+            'siret_valid' => $siretValid,
+            'vat_valid' => $vatValid,
+            'siret_detail' => $siretDetail,
+            'vat_detail' => $vatDetail,
+            'blocked' => $blocked,
+        );
+    }
+
+    /**
+     * Cœur du workflow : collecte, validation, stockage, affectation, e-mails.
+     */
+    private function processProRegistration(Customer $customer)
+    {
+        $idLang = (int) $this->context->language->id;
+        $idCountry = (int) Tools::getValue('b2r_country');
+        if (!$idCountry) {
+            $idCountry = (int) Configuration::get('PS_COUNTRY_DEFAULT');
+        }
+        $checks = $this->proSubmissionChecks();
+        $iso = $checks['iso'];
+        $scope = B2bCompat::countryScope($idCountry);
+        $company = $checks['company'];
+        $siret = $checks['siret'];
+        $vat = $checks['vat'];
+        $ape = $checks['ape'];
+        $website = trim((string) Tools::getValue('b2r_website'));
+        $phone = trim((string) Tools::getValue('b2r_phone'));
+        $siretValid = $checks['siret_valid'];
+        $vatValid = $checks['vat_valid'];
+        $siretDetail = $checks['siret_detail'];
+        $vatDetail = $checks['vat_detail'];
+        $blocked = $checks['blocked'];
 
         // --- Pièce jointe (Kbis) ---
         $attachment = $this->handleUpload($customer);
@@ -885,9 +926,8 @@ class B2bRegistration extends Module
 
             // Refus auto = le compte client PrestaShop ne doit PAS être conservé
             // (cohérence métier : on a refusé l'entreprise, on n'en garde pas
-            // l'enveloppe perso). Marqueur statique consommé par
-            // hookActionEmailSendBefore() pour bloquer le mail de bienvenue natif.
-            self::$suppressAccountCreationFor = (int) $customer->id;
+            // l'enveloppe perso). Le mail de bienvenue natif est bloqué plus
+            // tôt, par hookActionEmailSendBefore().
             try {
                 // On lie la demande à id_customer=0 pour conserver la trace
                 // métier (audit) sans bloquer la suppression du customer.
@@ -901,6 +941,14 @@ class B2bRegistration extends Module
             } catch (Exception $e) {
                 // best-effort, on continue.
             }
+
+            // Le cœur a déjà connecté ce client avant le hook et poursuit
+            // l'inscription avec lui. PrestaShop 1.7 recalcule alors les prix
+            // pour l'id resté dans le cookie, client qui n'existe plus, et
+            // s'arrête sur une page d'erreur. On le déconnecte (mylogout :
+            // client, panier et adresses retirés du cookie, présent de 1.7 à 9).
+            $this->context->cookie->mylogout();
+            $this->context->customer = new Customer();
         }
 
         // Notifie aussi l'admin en mode auto (visibilité des nouveaux pros).
