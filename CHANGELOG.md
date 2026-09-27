@@ -4,6 +4,21 @@ Toutes les modifications notables de ce module sont documentées ici.
 
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et le module suit le [Versionnement sémantique](https://semver.org/lang/fr/).
 
+## [1.1.0] - 2026-09-27
+
+### Ajouté
+
+- **Modération appelable hors back-office.** Valider, refuser et revérifier une demande passent par une classe publique, `B2bWorkflow`, utilisée par le back-office comme par l'application de gestion Régie : mêmes e-mails, mêmes groupes, quel que soit le point d'entrée.
+- **Revérification SIRET / TVA.** Un service INSEE ou VIES injoignable à l'inscription laissait la demande en « non vérifié » pour toujours. Les vérifications activées en configuration peuvent désormais être relancées ; un service encore injoignable laisse le résultat précédent en place.
+- **Historique des demandes.** Création, validation, refus, revérification et modification des informations par le client sont consignés : qui, quand, depuis où (back-office, boutique, Régie), avec le motif d'un refus. La table est créée à la mise à jour ; les demandes existantes ne sont pas modifiées.
+
+### Corrigé
+
+- **Refuser un compte déjà validé lui laissait ses prix professionnels.** Le statut passait à « refusé » mais le client restait dans le groupe pro, qui restait son groupe par défaut. Le refus retire désormais les groupes ajoutés par la validation et rend au client son groupe par défaut d'avant, ou le groupe « Client » de la boutique. Pour un compte validé avant cette version, ce sont les groupes que le module affecte à sa zone qui sont retirés.
+- **Double validation.** Un double clic, ou un formulaire resté ouvert, renvoyait l'e-mail d'activation ; une demande refusée pouvait aussi être validée sans contrôle. Les transitions sont maintenant vérifiées en base : une demande déjà dans l'état demandé n'est pas modifiée et aucun e-mail ne part. Valider une demande dont le compte client a été supprimé (refus automatique) est refusé avec un message clair, au lieu d'un échec muet.
+- **La page de CGV professionnelles n'était jamais proposée.** La configuration enregistrait la page choisie sous une clé et l'inscription la lisait sous une autre : la case à cocher des CGV n'apparaissait pas. Elle apparaît désormais côté Pro dès qu'une page est choisie.
+- Le back-office signale quand aucun groupe professionnel n'a pu être affecté (zone désactivée ou sans groupe), quand les groupes n'ont pas pu être retirés, et quand l'e-mail au client n'est pas parti, au lieu de confirmer en silence.
+
 ## [1.0.6] - 2026-09-04
 
 ### Corrigé

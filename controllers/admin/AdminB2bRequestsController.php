@@ -17,6 +17,7 @@ if (!defined('_PS_VERSION_')) {
 }
 
 require_once _PS_MODULE_DIR_ . 'b2bregistration/classes/B2bRequest.php';
+require_once _PS_MODULE_DIR_ . 'b2bregistration/classes/B2bWorkflow.php';
 
 /**
  * Back-office : liste de modération des demandes d'inscription B2B.
@@ -135,25 +136,52 @@ class AdminB2bRequestsController extends ModuleAdminController
     public function postProcess()
     {
         $id = (int) Tools::getValue($this->identifier);
-        $module = Module::getInstanceByName('b2bregistration');
 
-        if (Tools::isSubmit('approve' . $this->table) && $id && $module) {
-            if ($module->approveRequest($id)) {
-                $this->confirmations[] = $this->l('Demande approuvée, le client a été notifié.');
-            } else {
-                $this->errors[] = $this->l('Impossible d\'approuver cette demande.');
-            }
+        if (Tools::isSubmit('approve' . $this->table) && $id) {
+            $this->runWorkflow('approve', $id, $this->l('Demande approuvée, le client a été notifié.'));
         }
 
-        if (Tools::isSubmit('reject' . $this->table) && $id && $module) {
-            if ($module->rejectRequest($id, $this->l('Demande refusée par le marchand.'))) {
-                $this->confirmations[] = $this->l('Demande refusée, le client a été notifié.');
-            } else {
-                $this->errors[] = $this->l('Impossible de refuser cette demande.');
-            }
+        if (Tools::isSubmit('reject' . $this->table) && $id) {
+            $this->runWorkflow('reject', $id, $this->l('Demande refusée, le client a été notifié.'));
         }
 
         return parent::postProcess();
+    }
+
+    /**
+     * Exécute un geste de B2bWorkflow et traduit ses codes en messages.
+     */
+    private function runWorkflow($action, $id, $confirmation)
+    {
+        $request = new B2bRequest($id);
+        $idEmployee = (int) $this->context->employee->id;
+        try {
+            $result = ($action === 'reject')
+                ? B2bWorkflow::reject($request, $this->l('Demande refusée par le marchand.'), $idEmployee, 'bo')
+                : B2bWorkflow::approve($request, $idEmployee, 'bo');
+        } catch (B2bWorkflowException $e) {
+            $messages = array(
+                'bad_status'       => $this->l('Cette demande est déjà dans cet état : aucune action effectuée, aucun e-mail envoyé.'),
+                'customer_missing' => $this->l('Le compte client de cette demande n\'existe plus : impossible de l\'approuver.'),
+                'reason_invalid'   => $this->l('Le motif contient des caractères non autorisés.'),
+                'save_failed'      => $this->l('Impossible d\'enregistrer le nouvel état : aucun e-mail envoyé.'),
+            );
+            $this->errors[] = isset($messages[$e->getMessage()]) ? $messages[$e->getMessage()] : $e->getMessage();
+
+            return;
+        }
+
+        $this->confirmations[] = $confirmation;
+        $warnings = array(
+            'no_group_assigned'    => $this->l('Aucun groupe professionnel n\'a été affecté (portée désactivée ou sans groupe) : le client n\'a pas les prix pro.'),
+            'group_removal_failed' => $this->l('Les groupes professionnels n\'ont pas pu être retirés au client : vérifiez sa fiche.'),
+            'mail_failed'          => $this->l('L\'état a été enregistré, mais l\'e-mail au client n\'a pas pu être envoyé.'),
+        );
+        foreach ($result['warnings'] as $code) {
+            if (isset($warnings[$code])) {
+                $this->warnings[] = $warnings[$code];
+            }
+        }
     }
 
     public function renderView()

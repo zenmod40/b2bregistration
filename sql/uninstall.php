@@ -20,5 +20,6 @@ $sql = array();
 
 $sql[] = 'DROP TABLE IF EXISTS `' . _DB_PREFIX_ . 'b2r_request`;';
 $sql[] = 'DROP TABLE IF EXISTS `' . _DB_PREFIX_ . 'b2r_group_rule`;';
+$sql[] = 'DROP TABLE IF EXISTS `' . _DB_PREFIX_ . 'b2r_request_history`;';
 
 return $sql;

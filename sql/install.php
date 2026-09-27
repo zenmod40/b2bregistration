@@ -40,6 +40,8 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'b2r_request` (
     `id_group_assigned` INT(11) UNSIGNED NOT NULL DEFAULT 0,
     `status` VARCHAR(16) NOT NULL DEFAULT \'pending\',
     `note` TEXT NULL,
+    `groups_added` VARCHAR(255) NOT NULL DEFAULT \'\',
+    `id_default_group_before` INT(11) UNSIGNED NOT NULL DEFAULT 0,
     `date_add` DATETIME NOT NULL,
     `date_upd` DATETIME NOT NULL,
     PRIMARY KEY (`id_b2r_request`),
@@ -56,6 +58,21 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'b2r_group_rule` (
     `position` INT(11) UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (`id_b2r_group_rule`),
     KEY `scope` (`scope`)
+) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4;';
+
+// Historique des demandes (création, validation, refus, revérification, modification client).
+$sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'b2r_request_history` (
+    `id_b2r_request_history` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `id_b2r_request` INT UNSIGNED NOT NULL,
+    `action` VARCHAR(16) NOT NULL,
+    `status_from` VARCHAR(16) NOT NULL DEFAULT \'\',
+    `status_to` VARCHAR(16) NOT NULL DEFAULT \'\',
+    `id_employee` INT UNSIGNED NOT NULL DEFAULT 0,
+    `source` VARCHAR(16) NOT NULL DEFAULT \'bo\',
+    `comment` TEXT NULL,
+    `date_add` DATETIME NOT NULL,
+    PRIMARY KEY (`id_b2r_request_history`),
+    KEY `id_b2r_request` (`id_b2r_request`)
 ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4;';
 
 return $sql;

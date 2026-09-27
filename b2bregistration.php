@@ -22,6 +22,7 @@ require_once dirname(__FILE__) . '/classes/B2bValidator.php';
 require_once dirname(__FILE__) . '/classes/B2bCompat.php';
 require_once dirname(__FILE__) . '/classes/B2bMailer.php';
 require_once dirname(__FILE__) . '/classes/B2bInvoiceMentions.php';
+require_once dirname(__FILE__) . '/classes/B2bWorkflow.php';
 
 class B2bRegistration extends Module
 {
@@ -38,7 +39,7 @@ class B2bRegistration extends Module
     {
         $this->name = 'b2bregistration';
         $this->tab = 'administration';
-        $this->version = '1.0.6';
+        $this->version = '1.1.0';
         $this->author = 'ZM40';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -189,7 +190,8 @@ class B2bRegistration extends Module
             'B2R_MODERATION', 'B2R_NOTIFY_EMAILS',
             'B2R_ASSIGN_DOMESTIC', 'B2R_ASSIGN_EU', 'B2R_ASSIGN_WORLD',
             'B2R_USE_NATIVE_B2B', 'B2R_DEFAULT_GROUP',
-            'B2R_HEADER_LINK', 'B2R_HEADER_LABEL', 'B2R_HEADER_HOOK', 'B2R_CMS_TERMS',
+            'B2R_HEADER_LINK', 'B2R_HEADER_LABEL', 'B2R_HEADER_HOOK',
+            'B2R_CMS_TERMS', // ancienne clé (lue par erreur jusqu'en 1.0.6), nettoyée à la désinstallation
         ), B2bInvoiceMentions::keys());
     }
 
@@ -221,7 +223,6 @@ class B2bRegistration extends Module
             'B2R_HEADER_LINK'     => 0, // bouton "Inscription Pro" dans le top bar
             'B2R_HEADER_LABEL'    => '', // libellé custom (vide → "Inscription Pro")
             'B2R_HEADER_HOOK'     => 'nav1', // nav1 (top bar) / nav2 (header)
-            'B2R_CMS_TERMS'       => 0, // CMS B2B-specific terms (0 = pas de CGV)
             'ZM40_NET_ENABLED'    => 1,
         );
         foreach ($defaults as $k => $v) {
@@ -473,10 +474,12 @@ class B2bRegistration extends Module
             }
         }
 
-        // CGV B2B custom : si une page CMS est désignée, on affiche une checkbox
-        // obligatoire (validée côté backend dans processProRegistration).
+        // CGV B2B custom : si une page CMS est désignée, on affiche une case à
+        // cocher obligatoire côté Pro (attribut required posé par front.js).
+        // Pas de contrôle serveur : la case n'est pas un champ du formulaire
+        // client, et le compte existe déjà quand actionCustomerAccountAdd s'exécute.
         $termsUrl = '';
-        $termsCmsId = (int) Configuration::get('B2R_CMS_TERMS');
+        $termsCmsId = (int) Configuration::get('B2R_TERMS_CMS');
         if ($termsCmsId) {
             try {
                 $termsUrl = $this->context->link->getCMSLink($termsCmsId);
@@ -538,6 +541,11 @@ class B2bRegistration extends Module
         if (!Validate::isLoadedObject($request)) {
             return; // client B2C : aucune demande à mettre à jour
         }
+        $tracked = array('company', 'siret', 'vat_number', 'ape', 'website', 'pro_phone', 'id_country');
+        $before = array();
+        foreach ($tracked as $property) {
+            $before[$property] = (string) $request->$property;
+        }
 
         if (Tools::getIsset('b2r_siret')) {
             $siret = B2bValidator::normalizeSiret(Tools::getValue('b2r_siret'));
@@ -582,6 +590,15 @@ class B2bRegistration extends Module
             $request->update();
         } catch (Exception $e) {
             return;
+        }
+        $changed = array();
+        foreach ($tracked as $property) {
+            if ((string) $request->$property !== $before[$property]) {
+                $changed[] = $property;
+            }
+        }
+        if ($changed) {
+            B2bWorkflow::logHistory($request->id, 'customer_edit', $request->status, $request->status, 0, 'front', implode(', ', $changed));
         }
 
         B2bCompat::writeNativeCustomerFields($customer, array(
@@ -767,26 +784,17 @@ class B2bRegistration extends Module
         $vatDetail = array();
         $blocked = false;
 
-        if ($siret !== '' && (int) Configuration::get('B2R_ENABLE_SIRET') && B2bCompat::isInseeCountry($iso)) {
-            $formatOk = B2bValidator::isValidSiret($siret);
-            if (!$formatOk) {
-                $siretValid = B2bRequest::CHECK_INVALID;
-                $siretDetail = array('reachable' => true, 'reason' => 'format');
-            } elseif ((int) Configuration::get('B2R_ENABLE_INSEE')) {
-                $res = B2bValidator::checkInsee($siret, Configuration::get('B2R_INSEE_KEY'));
-                $siretDetail = $res;
-                if ($res['reachable']) {
-                    $siretValid = $res['valid'] ? B2bRequest::CHECK_VALID : B2bRequest::CHECK_INVALID;
+        $check = B2bWorkflow::checkSiret($siret, $iso);
+        if ($check !== null) {
+            $siretValid = $check['valid'];
+            $siretDetail = $check['detail'];
+            if ($siretValid === B2bRequest::CHECK_VALID && isset($siretDetail['name'])) { // INSEE
+                if ($company === '' && $siretDetail['name'] !== '') {
+                    $company = $siretDetail['name'];
                 }
-                if ($res['valid'] && $company === '' && $res['name'] !== '') {
-                    $company = $res['name'];
+                if ($ape === '' && $siretDetail['naf'] !== '') {
+                    $ape = $siretDetail['naf'];
                 }
-                if ($res['valid'] && $ape === '' && $res['naf'] !== '') {
-                    $ape = $res['naf'];
-                }
-            } else {
-                $siretValid = B2bRequest::CHECK_VALID; // format Luhn OK, pas de vérif live
-                $siretDetail = array('reachable' => true, 'reason' => 'luhn');
             }
 
             if ((int) Configuration::get('B2R_BLOCK_INVALID')
@@ -796,33 +804,22 @@ class B2bRegistration extends Module
             }
         }
 
-        if ($vat !== '' && (int) Configuration::get('B2R_ENABLE_VIES') && B2bCompat::isViesCountry(Tools::substr($vat, 0, 2))) {
-            $res = B2bValidator::checkVies($vat);
-            $vatDetail = $res;
-            if ($res['reachable']) {
-                $vatValid = $res['valid'] ? B2bRequest::CHECK_VALID : B2bRequest::CHECK_INVALID;
-            }
-            if ($res['valid'] && $company === '' && $res['name'] !== '') {
-                $company = $res['name'];
+        $check = B2bWorkflow::checkVat($vat, $siret);
+        if ($check !== null) {
+            $vatValid = $check['valid'];
+            $vatDetail = $check['detail'];
+            if ($vatValid === B2bRequest::CHECK_VALID && $company === '' && $vatDetail['name'] !== '') {
+                $company = $vatDetail['name'];
             }
 
             // Le n° de TVA a-t-il été auto-calculé depuis le SIREN (algo FR) ?
             // Si oui, c'est une suggestion, pas une déclaration du client : on ne
             // bloque PAS s'il n'est pas enregistré au VIES (cas franchise en base,
             // micro-entreprise, etc. qui ont une TVA calculable mais non active).
-            $autoComputed = false;
-            if (strlen($siret) === 14) {
-                $siren = substr($siret, 0, 9);
-                $autoComputed = ($vat === B2bValidator::frenchVatFromSiren($siren));
-                if ($autoComputed) {
-                    $vatDetail['auto_computed'] = true;
-                }
-            }
-
             if ((int) Configuration::get('B2R_BLOCK_INVALID')
                 && (int) Configuration::get('B2R_REQUIRE_VAT')
                 && $vatValid === B2bRequest::CHECK_INVALID
-                && !$autoComputed) {
+                && empty($vatDetail['auto_computed'])) {
                 $blocked = true;
             }
         }
@@ -865,6 +862,7 @@ class B2bRegistration extends Module
         } catch (Exception $e) {
             return;
         }
+        B2bWorkflow::logHistory($request->id, 'create', '', $status, 0, 'front', $blocked ? $request->note : null);
 
         // --- Champs natifs opportunistes (factures, BO) ---
         B2bCompat::writeNativeCustomerFields($customer, array(
@@ -877,7 +875,7 @@ class B2bRegistration extends Module
 
         // --- Affectation de groupe + e-mails selon le statut ---
         if ($status === B2bRequest::STATUS_APPROVED) {
-            $this->assignGroups($customer, $scope, $request);
+            B2bWorkflow::assignGroups($customer, $request);
             B2bMailer::sendApproved($customer, $idLang);
         } elseif ($status === B2bRequest::STATUS_PENDING) {
             B2bMailer::sendPending($customer, $idLang);
@@ -908,49 +906,6 @@ class B2bRegistration extends Module
         // Notifie aussi l'admin en mode auto (visibilité des nouveaux pros).
         if ($status === B2bRequest::STATUS_APPROVED) {
             B2bMailer::sendAdminNotice($customer, $request, $idLang, $this->getNotifyEmails());
-        }
-    }
-
-    /**
-     * Affecte le client aux groupes configurés pour son scope.
-     */
-    private function assignGroups(Customer $customer, $scope, B2bRequest $request)
-    {
-        $enabledMap = array(
-            B2bGroupRule::SCOPE_DOMESTIC => 'B2R_ASSIGN_DOMESTIC',
-            B2bGroupRule::SCOPE_EU       => 'B2R_ASSIGN_EU',
-            B2bGroupRule::SCOPE_WORLD    => 'B2R_ASSIGN_WORLD',
-        );
-        if (!isset($enabledMap[$scope]) || !(int) Configuration::get($enabledMap[$scope])) {
-            return;
-        }
-
-        $groupIds = B2bGroupRule::getGroupIdsForScope($scope);
-        if (empty($groupIds)) {
-            $fallback = (int) Configuration::get('B2R_DEFAULT_GROUP');
-            if ($fallback) {
-                $groupIds = array($fallback);
-            }
-        }
-        $groupIds = array_values(array_unique(array_filter(array_map('intval', $groupIds))));
-        if (empty($groupIds)) {
-            return;
-        }
-
-        try {
-            $customer->addGroups($groupIds);
-            // Groupe par défaut = premier groupe pro affecté.
-            $customer->id_default_group = (int) $groupIds[0];
-            $customer->update();
-        } catch (Exception $e) {
-            return;
-        }
-
-        $request->id_group_assigned = (int) $groupIds[0];
-        try {
-            $request->update();
-        } catch (Exception $e) {
-            // non bloquant
         }
     }
 
@@ -1017,45 +972,32 @@ class B2bRegistration extends Module
      * -------------------------------------------------------------------- */
 
     /**
-     * Approuve une demande : affecte les groupes et notifie le client.
+     * Approuve une demande (compatibilité 1.0.x) : délègue à B2bWorkflow.
+     *
+     * @return bool
      */
     public function approveRequest($idRequest)
     {
-        $request = new B2bRequest((int) $idRequest);
-        if (!Validate::isLoadedObject($request)) {
+        try {
+            B2bWorkflow::approve(new B2bRequest((int) $idRequest), (int) $this->context->employee->id, 'bo');
+        } catch (B2bWorkflowException $e) {
             return false;
         }
-        $customer = new Customer((int) $request->id_customer);
-        if (!Validate::isLoadedObject($customer)) {
-            return false;
-        }
-
-        $this->assignGroups($customer, $request->country_scope, $request);
-        $request->status = B2bRequest::STATUS_APPROVED;
-        $request->update();
-        B2bMailer::sendApproved($customer, (int) $customer->id_lang);
 
         return true;
     }
 
     /**
-     * Refuse une demande (motif facultatif) et notifie le client.
+     * Refuse une demande (compatibilité 1.0.x) : délègue à B2bWorkflow.
+     *
+     * @return bool
      */
     public function rejectRequest($idRequest, $reason = '')
     {
-        $request = new B2bRequest((int) $idRequest);
-        if (!Validate::isLoadedObject($request)) {
+        try {
+            B2bWorkflow::reject(new B2bRequest((int) $idRequest), $reason, (int) $this->context->employee->id, 'bo');
+        } catch (B2bWorkflowException $e) {
             return false;
-        }
-        $request->status = B2bRequest::STATUS_REJECTED;
-        if ($reason !== '') {
-            $request->note = $reason;
-        }
-        $request->update();
-
-        $customer = new Customer((int) $request->id_customer);
-        if (Validate::isLoadedObject($customer)) {
-            B2bMailer::sendRejected($customer, (int) $customer->id_lang, $reason);
         }
 
         return true;
