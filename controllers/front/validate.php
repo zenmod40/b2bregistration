@@ -44,7 +44,10 @@ class B2bregistrationValidateModuleFrontController extends ModuleFrontController
 
         // Anti-abus : 20 vérifications / minute / IP. Au-delà → fail-soft (examen
         // manuel), sans appel réseau : protège le quota INSEE / VIES des bots.
-        if (!B2bRateLimiter::allow('validate_' . Tools::getRemoteAddr(), 20, 60)) {
+        // B2B-03 : l'IP peut venir de X-Forwarded-For (falsifiable derrière un
+        // proxy) ; le compteur global, partagé avec l'inscription, borne le total.
+        if (!B2bRateLimiter::allow('validate_' . Tools::getRemoteAddr(), 20, 60)
+            || !B2bRateLimiter::allow('validate_global', B2bRateLimiter::GLOBAL_LIMIT, 60)) {
             return array('checked' => true, 'reachable' => false, 'valid' => false, 'throttled' => true);
         }
 

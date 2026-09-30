@@ -23,6 +23,7 @@ require_once dirname(__FILE__) . '/classes/B2bCompat.php';
 require_once dirname(__FILE__) . '/classes/B2bMailer.php';
 require_once dirname(__FILE__) . '/classes/B2bInvoiceMentions.php';
 require_once dirname(__FILE__) . '/classes/B2bWorkflow.php';
+require_once dirname(__FILE__) . '/classes/B2bRateLimiter.php';
 
 class B2bRegistration extends Module
 {
@@ -40,7 +41,7 @@ class B2bRegistration extends Module
     {
         $this->name = 'b2bregistration';
         $this->tab = 'administration';
-        $this->version = '1.1.0';
+        $this->version = '1.1.1';
         $this->author = 'ZM40';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -578,7 +579,7 @@ class B2bRegistration extends Module
                 $request->$property = trim((string) Tools::getValue($input));
             }
         }
-        $idCountry = (int) Tools::getValue('b2r_country');
+        $idCountry = $this->proCountryId();
         if ($idCountry && $idCountry !== (int) $request->id_country) {
             $request->id_country = $idCountry;
             $request->country_iso = strtoupper((string) Country::getIsoById($idCountry));
@@ -768,7 +769,7 @@ class B2bRegistration extends Module
             return self::$proChecks;
         }
 
-        $idCountry = (int) Tools::getValue('b2r_country');
+        $idCountry = $this->proCountryId();
         if (!$idCountry) {
             $idCountry = (int) Configuration::get('PS_COUNTRY_DEFAULT');
         }
@@ -786,7 +787,17 @@ class B2bRegistration extends Module
         $vatDetail = array();
         $blocked = false;
 
-        $check = B2bWorkflow::checkSiret($siret, $iso);
+        // B2B-03 : INSEE / VIES sont aussi appelés ici ; au-delà du quota global,
+        // pas d'appel réseau (vérif « inconnue » => modération manuelle).
+        $throttled = !B2bRateLimiter::allow('validate_global', B2bRateLimiter::GLOBAL_LIMIT, 60);
+
+        $check = $throttled ? null : B2bWorkflow::checkSiret($siret, $iso);
+        // B2B-01 : « SIRET obligatoire » n'était imposé qu'en JS. Un SIRET absent
+        // pour une entreprise française compte comme invalide (refus auto inclus).
+        if ($check === null && $siret === '' && (int) Configuration::get('B2R_REQUIRE_SIRET')
+            && (int) Configuration::get('B2R_ENABLE_SIRET') && B2bCompat::isInseeCountry($iso)) {
+            $check = array('valid' => B2bRequest::CHECK_INVALID, 'detail' => array('reachable' => true, 'reason' => 'missing'));
+        }
         if ($check !== null) {
             $siretValid = $check['valid'];
             $siretDetail = $check['detail'];
@@ -806,7 +817,7 @@ class B2bRegistration extends Module
             }
         }
 
-        $check = B2bWorkflow::checkVat($vat, $siret);
+        $check = $throttled ? null : B2bWorkflow::checkVat($vat, $siret);
         if ($check !== null) {
             $vatValid = $check['valid'];
             $vatDetail = $check['detail'];
@@ -837,7 +848,25 @@ class B2bRegistration extends Module
             'siret_detail' => $siretDetail,
             'vat_detail' => $vatDetail,
             'blocked' => $blocked,
+            // B2B-01 : validation automatique seulement si un identifiant est
+            // reconnu valide, et si le n° de TVA obligatoire est bien fourni. Un SIRET
+            // qui passe seulement la clé de Luhn (sans INSEE) ne prouve pas l'existence
+            // de l'entreprise : il ne suffit pas, la demande part en modération.
+            'verified' => (($siretValid === B2bRequest::CHECK_VALID && !(isset($siretDetail['reason']) && $siretDetail['reason'] === 'luhn'))
+                    || $vatValid === B2bRequest::CHECK_VALID)
+                && !($vat === '' && (int) Configuration::get('B2R_REQUIRE_VAT') && B2bCompat::isViesCountry($iso)),
         );
+    }
+
+    /**
+     * Pays de l'entreprise soumis, s'il existe et est actif (B2B-01 : la valeur
+     * choisit la portée des groupes, elle ne doit pas être libre). 0 sinon.
+     */
+    private function proCountryId()
+    {
+        $country = new Country((int) Tools::getValue('b2r_country'));
+
+        return (Validate::isLoadedObject($country) && $country->active) ? (int) $country->id : 0;
     }
 
     /**
@@ -846,7 +875,7 @@ class B2bRegistration extends Module
     private function processProRegistration(Customer $customer)
     {
         $idLang = (int) $this->context->language->id;
-        $idCountry = (int) Tools::getValue('b2r_country');
+        $idCountry = $this->proCountryId();
         if (!$idCountry) {
             $idCountry = (int) Configuration::get('PS_COUNTRY_DEFAULT');
         }
@@ -872,7 +901,7 @@ class B2bRegistration extends Module
         $moderation = (int) Configuration::get('B2R_MODERATION');
         if ($blocked) {
             $status = B2bRequest::STATUS_REJECTED;
-        } elseif ($moderation) {
+        } elseif ($moderation || !$checks['verified']) {
             $status = B2bRequest::STATUS_PENDING;
         } else {
             $status = B2bRequest::STATUS_APPROVED;

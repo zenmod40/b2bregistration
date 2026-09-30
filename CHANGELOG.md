@@ -4,6 +4,20 @@ Toutes les modifications notables de ce module sont documentées ici.
 
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/) et le module suit le [Versionnement sémantique](https://semver.org/lang/fr/).
 
+## [1.1.1] - 2026-09-30
+
+### Sécurité
+
+- **Correctif de sécurité, mise à jour recommandée.** Le SIRET « obligatoire » n'était imposé que dans le navigateur, et le refus automatique des identifiants invalides ne s'appliquait pas à un SIRET absent : un visiteur pouvait obtenir le groupe professionnel, et ses tarifs, sans identifiant valide. Le SIRET obligatoire est désormais contrôlé sur le serveur, un SIRET absent compte comme invalide, et le pays soumis doit exister et être actif. Le détail sera publié ultérieurement dans une note de sécurité.
+- **Validation automatique plus stricte.** Sans modération, une demande n'est validée automatiquement que si l'entreprise est confirmée par l'INSEE (SIRET) ou par VIES (TVA). Un SIRET qui passe seulement la clé de contrôle ne prouve pas l'existence de l'entreprise : la demande part en modération. Un service INSEE ou VIES injoignable met aussi la demande en attente au lieu de la valider.
+- **Droits des employés.** Valider ou refuser une demande exige le droit de modification sur l'onglet. Un profil en lecture seule pouvait jusqu'ici le faire.
+- **Limite des vérifications.** En plus de la limite par visiteur, un plafond global de 30 vérifications SIRET/TVA par minute (quota de l'API Sirene) couvre la vérification en direct et l'inscription ; au-delà, aucune requête n'est envoyée et la demande part en modération.
+
+### Ajouté
+
+- **Boutons Approuver et Refuser sur la fiche d'une demande.** Ils n'existaient que dans la liste. Approuver est proposé tant que la demande est en attente, Refuser tant qu'elle n'est pas déjà refusée (avec confirmation) ; les deux exigent le droit de modification.
+- **Vérifications en clair sur la fiche.** Le résultat des contrôles SIRET et TVA s'affichait en données brutes ; il est désormais rédigé en phrases (« Entreprise vérifiée auprès de l'INSEE : … », « Format valide, mais l'existence de l'entreprise n'a pas été vérifiée… »), avec un lien vers l'Annuaire des entreprises quand l'entreprise n'est pas confirmée. Le statut s'affiche avec le même badge que dans la liste.
+
 ## [1.1.0] - 2026-09-27
 
 ### Ajouté

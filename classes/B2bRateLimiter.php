@@ -26,6 +26,12 @@ if (!defined('_PS_VERSION_')) {
 class B2bRateLimiter
 {
     /**
+     * Appels INSEE / VIES par minute, toutes IP confondues (B2B-03) : l'IP du
+     * visiteur est falsifiable derrière un proxy, ce plafond ne l'est pas.
+     */
+    const GLOBAL_LIMIT = 30; // quota de l'API Sirene INSEE : ~30 requêtes/min
+
+    /**
      * @param string $key    identifiant du bucket (ex. IP du visiteur)
      * @param int    $limit  nombre max de requêtes par fenêtre
      * @param int    $window durée de la fenêtre en secondes

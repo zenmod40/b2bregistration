@@ -124,10 +124,7 @@ class AdminB2bRequestsController extends ModuleAdminController
 
     private function renderActionLink($action, $icon, $label, $id)
     {
-        $href = self::$currentIndex
-            . '&' . $action . $this->table . '=1'
-            . '&' . $this->identifier . '=' . (int) $id
-            . '&token=' . $this->token;
+        $href = $this->actionUrl($action, $id);
 
         return '<a class="btn btn-default" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">'
             . '<i class="' . $icon . '"></i> ' . $label . '</a>';
@@ -136,6 +133,15 @@ class AdminB2bRequestsController extends ModuleAdminController
     public function postProcess()
     {
         $id = (int) Tools::getValue($this->identifier);
+
+        // B2B-02 : postProcess() passe avant viewAccess() ; approuver ou refuser
+        // exige le droit de modification sur l'onglet.
+        if ((Tools::isSubmit('approve' . $this->table) || Tools::isSubmit('reject' . $this->table))
+            && !$this->access('edit')) {
+            $this->errors[] = $this->trans('Access denied.', array(), 'Admin.Notifications.Error');
+
+            return parent::postProcess();
+        }
 
         if (Tools::isSubmit('approve' . $this->table) && $id) {
             $this->runWorkflow('approve', $id, $this->l('Demande approuvée, le client a été notifié.'));
@@ -184,6 +190,81 @@ class AdminB2bRequestsController extends ModuleAdminController
         }
     }
 
+    /**
+     * Résultat de la vérification SIRET, en phrase lisible par le marchand.
+     */
+    private function describeSiret(array $d, $siret)
+    {
+        $reason = isset($d['reason']) ? $d['reason'] : '';
+        if ($reason === 'missing') {
+            return $this->l('Aucun SIRET fourni, alors qu\'il est obligatoire.');
+        }
+        if ($reason === 'format') {
+            return $this->l('Ce numéro n\'est pas un SIRET valide (erreur de saisie ou numéro inventé).');
+        }
+        if ($reason === 'luhn') {
+            return $this->l('Le numéro a un format valide, mais l\'existence de l\'entreprise n\'a pas été vérifiée (vérification INSEE désactivée). À contrôler avant d\'approuver.');
+        }
+        if ($reason === 'customer_edit') {
+            return $this->l('Le client a modifié son SIRET après l\'inscription : il n\'a pas été vérifié de nouveau.');
+        }
+        if ($siret === '') {
+            return $this->l('Aucun SIRET fourni.');
+        }
+        if (!isset($d['reachable'])) {
+            return $this->l('Non vérifié : la vérification SIRET est désactivée, ne s\'applique pas à ce pays, ou n\'a pas pu être faite.');
+        }
+        if (!$d['reachable']) {
+            return $this->l('Non vérifié : le service de l\'INSEE était injoignable au moment de l\'inscription.');
+        }
+        if (!empty($d['active'])) {
+            return sprintf($this->l('Entreprise vérifiée auprès de l\'INSEE : %s, établissement en activité.'), $d['name'] !== '' ? $d['name'] : '—')
+                . (!empty($d['naf']) ? ' ' . sprintf($this->l('Code APE %s.'), $d['naf']) : '');
+        }
+        if (!empty($d['name'])) {
+            return sprintf($this->l('Établissement connu de l\'INSEE (%s), mais fermé.'), $d['name']);
+        }
+
+        return $this->l('Ce SIRET est introuvable dans le répertoire de l\'INSEE.');
+    }
+
+    /**
+     * Résultat de la vérification du n° de TVA (VIES), en phrase lisible.
+     */
+    private function describeVat(array $d, $vat)
+    {
+        if (isset($d['reason']) && $d['reason'] === 'customer_edit') {
+            return $this->l('Le client a modifié son numéro de TVA après l\'inscription : il n\'a pas été vérifié de nouveau.');
+        }
+        if ($vat === '') {
+            return $this->l('Aucun numéro de TVA fourni.');
+        }
+        if (!isset($d['reachable'])) {
+            return $this->l('Non vérifié : la vérification VIES est désactivée, ou le numéro n\'est pas européen.');
+        }
+        if (!$d['reachable']) {
+            return $this->l('Non vérifié : le service VIES de la Commission européenne était injoignable au moment de l\'inscription.');
+        }
+        $auto = !empty($d['auto_computed'])
+            ? ' ' . $this->l('Ce numéro a été calculé automatiquement à partir du SIREN.') : '';
+        if (!empty($d['valid'])) {
+            return (!empty($d['name'])
+                ? sprintf($this->l('Numéro de TVA valide selon VIES : %s.'), $d['name'])
+                : $this->l('Numéro de TVA valide selon VIES.')) . $auto;
+        }
+
+        return $this->l('Numéro de TVA non reconnu par VIES.') . $auto
+            . ($auto !== '' ? ' ' . $this->l('L\'entreprise n\'est peut-être pas assujettie à la TVA.') : '');
+    }
+
+    private function actionUrl($action, $id)
+    {
+        return self::$currentIndex
+            . '&' . $action . $this->table . '=1'
+            . '&' . $this->identifier . '=' . (int) $id
+            . '&token=' . $this->token;
+    }
+
     public function renderView()
     {
         $id = (int) Tools::getValue($this->identifier);
@@ -192,10 +273,26 @@ class AdminB2bRequestsController extends ModuleAdminController
             return parent::renderView();
         }
 
+        $siretDetail = json_decode((string) $request->siret_detail, true);
+        $siretDetail = is_array($siretDetail) ? $siretDetail : array();
+        $vatDetail = json_decode((string) $request->vat_detail, true);
+        $vatDetail = is_array($vatDetail) ? $vatDetail : array();
+        $siret = (string) $request->siret;
+
         $this->context->smarty->assign(array(
             'b2r' => $request,
-            'siret_detail' => json_decode((string) $request->siret_detail, true),
-            'vat_detail'   => json_decode((string) $request->vat_detail, true),
+            'b2r_status_badge' => $this->renderStatus($request->status),
+            'siret_text' => $this->describeSiret($siretDetail, $siret),
+            // Lien de contrôle manuel quand l'existence de l'entreprise n'est pas confirmée.
+            'siret_check_url' => (B2bValidator::isValidSiret($siret) && empty($siretDetail['active']))
+                ? 'https://annuaire-entreprises.data.gouv.fr/etablissement/' . $siret : '',
+            'vat_text' => $this->describeVat($vatDetail, (string) $request->vat_number),
+            // Mêmes gestes que la liste, proposés seulement quand ils ont un sens
+            // (B2bWorkflow refuse de toute façon une transition invalide).
+            'b2r_approve_url' => ($this->access('edit') && $request->status === B2bRequest::STATUS_PENDING)
+                ? $this->actionUrl('approve', $id) : '',
+            'b2r_reject_url' => ($this->access('edit') && $request->status !== B2bRequest::STATUS_REJECTED)
+                ? $this->actionUrl('reject', $id) : '',
         ));
 
         return $this->module->display(
